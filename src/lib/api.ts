@@ -35,18 +35,20 @@ export interface Stats {
 }
 
 export async function searchTeams(query: string): Promise<TeamResult[]> {
-  const { data, error } = await supabase.functions.invoke("fetch-fixtures", {
-    body: { action: "search-teams", teamId: query },
+  const { data, error } = await supabase.functions.invoke("api-matches", {
+    body: { action: "search-teams", query },
   });
   if (error) throw error;
+  console.log("Dados recebidos:", data);
   return data.teams || [];
 }
 
 export async function getStats(teamId: number, day: number, month: number) {
-  const { data, error } = await supabase.functions.invoke("fetch-fixtures", {
+  const { data, error } = await supabase.functions.invoke("api-matches", {
     body: { teamId, day, month },
   });
   if (error) throw error;
+  console.log("Dados recebidos:", data);
   if (data.error && !data.stats) throw new Error(data.error);
   return data as { stats: Stats | null; matches: MatchResult[]; source: string; error?: string };
 }

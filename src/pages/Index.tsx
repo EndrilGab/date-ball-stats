@@ -22,16 +22,17 @@ export default function Index() {
     setLoading(true);
     setStats(null);
     try {
-      const result = await getStats(team.id, day, month);
-      if (result.error) {
-        toast.warning(result.error);
+      const response = await getStats(team.id, day, month);
+      console.log("Dados recebidos:", response);
+      if (response.error) {
+        toast.warning(response.error);
       }
-      if (result.stats) {
-        setStats(result.stats);
-        if (result.source === "cache") {
+      if (response.stats) {
+        setStats(response.stats);
+        if (response.source === "cache") {
           toast.info("Dados carregados do cache");
         }
-      } else if (!result.error) {
+      } else if (!response.error) {
         toast.info("Nenhum jogo encontrado nessa data");
       }
     } catch (err: any) {
