@@ -116,9 +116,17 @@ Deno.serve(async (req) => {
     const currentYear = now.getUTCFullYear();
     const startSeason = currentYear - 10;
 
-    const collectedFixtures: FixtureResponse[] = [];
+    const { seasons, preloadedFixtures, preloadedSeason } = await resolveSeasonRange(
+      teamId,
+      apiKey,
+      startSeason,
+      currentYear,
+    );
 
-    for (let season = startSeason; season <= currentYear; season++) {
+    const collectedFixtures: FixtureResponse[] = [...preloadedFixtures];
+
+    for (const season of seasons) {
+      if (season === preloadedSeason) continue;
       const fixturesBySeason = await fetchFixturesBySeason(teamId, season, apiKey);
       collectedFixtures.push(...fixturesBySeason);
       await wait(250);
@@ -159,6 +167,14 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (collectedFixtures.length === 0) {
+      return jsonResponse({
+        error: "A API retornou resposta vazia para os filtros informados.",
+        stats: null,
+        matches: [],
+      });
+    }
+
     if (teamsToCache.length > 0) {
       const uniqueTeams = Array.from(new Map(teamsToCache.map((team) => [team.id, team])).values());
       await supabase.from("teams").upsert(uniqueTeams, { onConflict: "id" });
@@ -183,26 +199,60 @@ Deno.serve(async (req) => {
 });
 
 async function fetchFixturesBySeason(teamId: number, season: number, apiKey: string): Promise<FixtureResponse[]> {
-  const fixtures: FixtureResponse[] = [];
-  let page = 1;
-  let totalPages = 1;
+  const url = `https://v3.football.api-sports.io/fixtures?team=${teamId}&season=${season}`;
+  const data = await requestApiFootball(url, apiKey);
 
-  while (page <= totalPages) {
-    const url = `https://v3.football.api-sports.io/fixtures?team=${teamId}&season=${season}&page=${page}`;
-    const data = await requestApiFootball(url, apiKey);
-
-    const responseData: FixtureResponse[] = data.response || [];
-    fixtures.push(...responseData);
-
-    totalPages = Number(data?.paging?.total || 1);
-    page += 1;
-
-    if (page <= totalPages) {
-      await wait(250);
-    }
+  const planRange = parsePlanRange(data?.errors?.plan);
+  if (planRange) {
+    return [];
   }
 
-  return fixtures;
+  const apiErrors = formatApiErrors(data?.errors);
+  if (apiErrors) {
+    throw new ApiFootballError(502, `Erro da API-FOOTBALL: ${apiErrors}`);
+  }
+
+  return data.response || [];
+}
+
+async function resolveSeasonRange(
+  teamId: number,
+  apiKey: string,
+  requestedStart: number,
+  requestedEnd: number,
+): Promise<{ seasons: number[]; preloadedFixtures: FixtureResponse[]; preloadedSeason: number | null }> {
+  const probeSeason = requestedEnd;
+  const probeData = await requestApiFootball(
+    `https://v3.football.api-sports.io/fixtures?team=${teamId}&season=${probeSeason}`,
+    apiKey,
+  );
+
+  const planRange = parsePlanRange(probeData?.errors?.plan);
+  if (planRange) {
+    const start = Math.max(requestedStart, planRange.start);
+    const end = Math.min(requestedEnd, planRange.end);
+    return {
+      seasons: buildSeasonRange(start, end),
+      preloadedFixtures: [],
+      preloadedSeason: null,
+    };
+  }
+
+  const apiErrors = formatApiErrors(probeData?.errors);
+  if (apiErrors) {
+    throw new ApiFootballError(502, `Erro da API-FOOTBALL: ${apiErrors}`);
+  }
+
+  return {
+    seasons: buildSeasonRange(requestedStart, requestedEnd),
+    preloadedFixtures: probeData.response || [],
+    preloadedSeason: probeSeason,
+  };
+}
+
+function buildSeasonRange(start: number, end: number): number[] {
+  if (start > end) return [];
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
 }
 
 async function fetchAllCachedTeamMatches(supabase: ReturnType<typeof createClient>, teamId: number): Promise<any[]> {
@@ -249,7 +299,15 @@ async function requestApiFootball(url: string, apiKey: string): Promise<any> {
   });
 
   const textBody = await response.text();
-  const data = textBody ? JSON.parse(textBody) : {};
+  let data: any = {};
+
+  if (textBody) {
+    try {
+      data = JSON.parse(textBody);
+    } catch {
+      data = { raw: textBody };
+    }
+  }
 
   console.log("Response API:", data);
 
@@ -268,6 +326,29 @@ async function requestApiFootball(url: string, apiKey: string): Promise<any> {
   }
 
   return data;
+}
+
+function parsePlanRange(planError?: unknown): { start: number; end: number } | null {
+  if (typeof planError !== "string") return null;
+  const matched = planError.match(/from\s+(\d{4})\s+to\s+(\d{4})/i);
+  if (!matched) return null;
+  return {
+    start: Number(matched[1]),
+    end: Number(matched[2]),
+  };
+}
+
+function formatApiErrors(errors: unknown): string | null {
+  if (!errors || typeof errors !== "object") return null;
+
+  const entries = Object.entries(errors as Record<string, unknown>).filter(([, value]) => {
+    if (value === null || value === undefined) return false;
+    if (typeof value === "string") return value.trim().length > 0;
+    return true;
+  });
+
+  if (entries.length === 0) return null;
+  return entries.map(([key, value]) => `${key}: ${String(value)}`).join(" | ");
 }
 
 function calculateStats(matches: any[], teamId: number) {
