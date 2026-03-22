@@ -14,7 +14,81 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      matches: {
+        Row: {
+          away_goals: number
+          away_team_id: number
+          created_at: string
+          date: string
+          home_goals: number
+          home_team_id: number
+          id: number
+          league: string | null
+          season: number | null
+        }
+        Insert: {
+          away_goals?: number
+          away_team_id: number
+          created_at?: string
+          date: string
+          home_goals?: number
+          home_team_id: number
+          id: number
+          league?: string | null
+          season?: number | null
+        }
+        Update: {
+          away_goals?: number
+          away_team_id?: number
+          created_at?: string
+          date?: string
+          home_goals?: number
+          home_team_id?: number
+          id?: number
+          league?: string | null
+          season?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matches_away_team_id_fkey"
+            columns: ["away_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_home_team_id_fkey"
+            columns: ["home_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      teams: {
+        Row: {
+          country: string | null
+          created_at: string
+          id: number
+          logo: string | null
+          name: string
+        }
+        Insert: {
+          country?: string | null
+          created_at?: string
+          id: number
+          logo?: string | null
+          name: string
+        }
+        Update: {
+          country?: string | null
+          created_at?: string
+          id?: number
+          logo?: string | null
+          name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
