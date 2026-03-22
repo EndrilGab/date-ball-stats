@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
     const apiKey = Deno.env.get("API_FOOTBALL_KEY")!;
     const season = new Date().getUTCFullYear();
     const response = await fetch(
-      `https://v3.football.api-sports.io/fixtures?team=33&season=${season}&page=1`,
+      `https://v3.football.api-sports.io/fixtures?team=33&season=${season}`,
       {
         headers: { "x-apisports-key": apiKey },
       },
